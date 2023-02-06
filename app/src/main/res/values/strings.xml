@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Gallery App</string>
+    <string name="private_storage">Private Storage</string>
+</resources>
