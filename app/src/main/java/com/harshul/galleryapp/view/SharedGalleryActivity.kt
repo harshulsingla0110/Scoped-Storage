@@ -1,8 +1,15 @@
 package com.harshul.galleryapp.view
 
+import android.app.RecoverableSecurityException
 import android.content.ContentUris
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.widget.Toast
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
@@ -18,18 +25,36 @@ import kotlinx.coroutines.withContext
 class SharedGalleryActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySharedGalleryBinding
-
     private lateinit var externalStoragePhotoAdapter: SharedPhotoAdapter
+    private lateinit var intentSenderLauncher: ActivityResultLauncher<IntentSenderRequest>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivitySharedGalleryBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        externalStoragePhotoAdapter = SharedPhotoAdapter(this) { }
+        externalStoragePhotoAdapter = SharedPhotoAdapter(this) {
+            lifecycleScope.launch {
+                deletePhotoFromExternalStorage(it.contentUri)
+            }
+        }
 
         setupExternalStorageRecyclerView()
         loadPhotosFromExternalStorageIntoRecyclerView()
+
+        intentSenderLauncher =
+            registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
+                if (it.resultCode == RESULT_OK) {
+                    Toast.makeText(
+                        this@SharedGalleryActivity, "Photo deleted successfully", Toast.LENGTH_SHORT
+                    ).show()
+                    loadPhotosFromExternalStorageIntoRecyclerView()
+                } else {
+                    Toast.makeText(
+                        this@SharedGalleryActivity, "Photo couldn't be deleted", Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
     }
 
     private fun setupExternalStorageRecyclerView() = binding.rvPublicPhotos.apply {
@@ -79,6 +104,40 @@ class SharedGalleryActivity : AppCompatActivity() {
             val photos = loadPhotosFromExternalStorage()
             externalStoragePhotoAdapter.submitList(photos)
         }
+    }
+
+    private suspend fun deletePhotoFromExternalStorage(photoUri: Uri) {
+        withContext(Dispatchers.IO) {
+            try {
+                contentResolver.delete(photoUri, null, null)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@SharedGalleryActivity, "Photo deleted successfully", Toast.LENGTH_SHORT
+                    ).show()
+                }
+                loadPhotosFromExternalStorageIntoRecyclerView()
+            } catch (e: SecurityException) {
+                val intentSender = when {
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                        MediaStore.createDeleteRequest(
+                            contentResolver,
+                            listOf(photoUri)
+                        ).intentSender
+                    }
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                        val recoverableSecurityException = e as? RecoverableSecurityException
+                        recoverableSecurityException?.userAction?.actionIntent?.intentSender
+                    }
+                    else -> null
+                }
+                intentSender?.let { sender ->
+                    intentSenderLauncher.launch(
+                        IntentSenderRequest.Builder(sender).build()
+                    )
+                }
+            }
+        }
+
     }
 
 }

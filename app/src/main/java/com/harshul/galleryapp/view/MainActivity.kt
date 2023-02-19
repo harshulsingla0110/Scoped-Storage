@@ -76,12 +76,13 @@ class MainActivity : AppCompatActivity() {
             )
         }
         binding.cvShared.setOnClickListener {
-            startActivity(
-                Intent(
-                    this,
-                    SharedGalleryActivity::class.java
-                )
-            )
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                if (readPermissionGranted) {
+                    startActivity(Intent(this, SharedGalleryActivity::class.java))
+                } else {
+                    updateOrRequestPermissions()
+                }
+            } else startActivity(Intent(this, SharedGalleryActivity::class.java))
         }
 
         binding.switch1.setOnCheckedChangeListener { _, isChecked ->
